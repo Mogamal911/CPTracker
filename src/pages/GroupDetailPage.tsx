@@ -23,9 +23,12 @@ export const GroupDetailPage = () => {
     if (!teamId) return;
     const ref = doc(db, 'teams', teamId);
     return onSnapshot(ref, (snap) => {
-      if (snap.exists()) setTeam(snap.data() as Team);
-      else setTeam(null);
-      setLoading(false);
+      if (snap.exists()) {
+        setTeam(snap.data() as Team);
+      } else {
+        setTeam(null);
+        setLoading(false);
+      }
     }, err => {
       console.error('Error loading team:', err);
       setLoading(false);
@@ -34,26 +37,41 @@ export const GroupDetailPage = () => {
 
   // Fetch member profiles whenever team.members changes
   useEffect(() => {
-    if (!team || team.members.length === 0) { setMembers([]); return; }
-
-    // Firestore `in` max 30 items; chunk if needed
-    const chunkSize = 30;
-    const chunks: string[][] = [];
-    for (let i = 0; i < team.members.length; i += chunkSize) {
-      chunks.push(team.members.slice(i, i + chunkSize));
+    if (!team) return;
+    if (team.members.length === 0) {
+      setMembers([]);
+      setLoading(false);
+      return;
     }
 
-    Promise.all(
-      chunks.map(chunk =>
-        getDocs(query(collection(db, 'users'), where('uid', 'in', chunk)))
-          .then(snap => snap.docs.map(d => d.data() as UserProfile))
-      )
-    ).then(results => {
-      const flat = results.flat();
-      // Sort by xp descending
-      flat.sort((a, b) => (b.xp ?? 0) - (a.xp ?? 0));
-      setMembers(flat);
-    }).catch(err => console.error('Error fetching members:', err));
+    try {
+      const chunkSize = 30;
+      const chunks: string[][] = [];
+      for (let i = 0; i < team.members.length; i += chunkSize) {
+        chunks.push(team.members.slice(i, i + chunkSize));
+      }
+
+      Promise.all(
+        chunks.map(chunk =>
+          getDocs(query(collection(db, 'users'), where('uid', 'in', chunk)))
+            .then(snap => snap.docs.map(d => d.data() as UserProfile))
+        )
+      ).then(results => {
+        const flat = results.flat();
+        // Sort by xp descending
+        flat.sort((a, b) => (b.xp ?? 0) - (a.xp ?? 0));
+        setMembers(flat);
+        setLoading(false);
+      }).catch(err => {
+        console.error('Error fetching members:', err);
+        setMembers([]);
+        setLoading(false);
+      });
+    } catch (err) {
+      console.error('Catch block error in member fetch:', err);
+      setMembers([]);
+      setLoading(false);
+    }
   }, [team?.members.join(',')]);
 
   const handleCopyLink = () => {
@@ -147,7 +165,7 @@ export const GroupDetailPage = () => {
           </div>
 
           {members.length === 0 ? (
-            <div className="py-10 text-center text-slate-500 italic text-sm">Loading members…</div>
+            <div className="py-10 text-center text-slate-500 italic text-sm">No members in this group yet.</div>
           ) : (
             <div className="divide-y divide-slate-800/40">
               {members.map((member, idx) => {
