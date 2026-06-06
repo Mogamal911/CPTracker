@@ -1,0 +1,23 @@
+# Tasks
+
+- [x] Database Layer & Config
+  - [x] Update `firestore.rules` for usernames and friendships collections
+  - [x] Deploy updated Firestore security rules
+- [x] Core Services & Hooks
+  - [x] Create `src/services/usernameService.ts`
+  - [x] Create `src/services/friendService.ts`
+  - [x] Create `src/hooks/useFriends.ts`
+- [x] Authentication & Onboarding
+  - [x] Update `src/context/AuthContext.tsx` with `needsUsername` and updated onboarding logic
+  - [x] Update `src/components/OnboardingModal.tsx` to require username and check availability in real time
+  - [x] Create `src/components/UsernameSetupModal.tsx` to prompt existing users without username
+  - [x] Create `src/components/EditUsernameModal.tsx` to allow changing username from Dashboard settings
+- [x] UI & Navigation Integration
+  - [x] Add Edit icon and update DashboardPage header to show username and edit modal
+  - [x] Create `src/pages/FriendsPage.tsx` with search and friend listing/removal
+  - [x] Update `src/pages/LeaderboardPage.tsx` with Global/Friends/Group tabs, search bar, and usernames
+  - [x] Update `src/pages/GroupDetailPage.tsx` to show usernames instead of displayNames
+  - [x] Update `src/App.tsx` with `/friends` route and include setup modal globally
+  - [x] Update `src/components/NavBar.tsx` with "Friends" tab
+- [x] Verification
+  - [x] Verify build compiles with zero TypeScript errors

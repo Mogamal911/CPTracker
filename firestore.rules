@@ -1,0 +1,49 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the requesting user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users — read/write only if owned by user
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Usernames — read for everyone (even guests); write for authenticated users
+    match /usernames/{username} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Friendships — only owner can read/write their own friends list
+    match /friendships/{userId}/friends/{friendId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Teams — read for everyone (including guests); create for authenticated users;
+    // update if user is appending their own UID using arrayUnion
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.resource.data.members.hasAll(resource.data.members) &&
+        request.resource.data.members.removeAll(resource.data.members).hasOnly([request.auth.uid])
+      );
+    }
+
+    // Solves — read for everyone; write for authenticated users
+    match /solves/{solveId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}
