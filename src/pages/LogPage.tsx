@@ -48,14 +48,19 @@ export const LogPage = () => {
   const { submitSolve, submitting } = useSolveSubmit();
 
   // Form state
-  const [platform,     setPlatform]     = useState<'codeforces' | 'atcoder' | 'leetcode'>('codeforces');
+  const [platform,     setPlatform]     = useState<'codeforces' | 'atcoder' | 'leetcode' | null>(null);
   const [problemName,  setProblemName]  = useState('');
   const [problemLink,  setProblemLink]  = useState('');
   const [hours,        setHours]        = useState(0);
   const [minutes,      setMinutes]      = useState(0);
   const [accepted,     setAccepted]     = useState<boolean | null>(null);
-  const [difficulty,   setDifficulty]   = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [difficulty,   setDifficulty]   = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [notes,        setNotes]        = useState('');
+  const [sourceType,   setSourceType]   = useState<'practice' | 'sheet' | 'contest' | null>(null);
+  const [wa,           setWa]           = useState(0);
+  const [tle,          setTle]          = useState(0);
+  const [re,           setRe]           = useState(0);
+  const [ce,           setCe]           = useState(0);
 
   // UI state
   const [toast,          setToast]          = useState<{ message: string; type: 'success' | 'neutral' } | null>(null);
@@ -75,7 +80,7 @@ export const LogPage = () => {
 
     if (!user) { setShowGuestPrompt(true); return; }
     if (!problemName.trim()) { setFormError('Problem name is required.'); return; }
-    if (accepted === null) { setFormError('Please select Accepted or Not solved.'); return; }
+    if (totalMinutes <= 0) { setFormError('Please enter the time spent.'); return; }
 
     try {
       const result = await submitSolve({
@@ -86,6 +91,11 @@ export const LogPage = () => {
         totalTime: totalMinutes,
         accepted,
         notes: notes.trim(),
+        sourceType,
+        wa,
+        tle,
+        re,
+        ce,
       });
 
       if (result?.success) {
@@ -97,7 +107,8 @@ export const LogPage = () => {
         // Reset form
         setProblemName(''); setProblemLink('');
         setHours(0); setMinutes(0);
-        setAccepted(null); setDifficulty('medium'); setNotes('');
+        setAccepted(null); setDifficulty(null); setNotes('');
+        setSourceType(null); setWa(0); setTle(0); setRe(0); setCe(0);
       }
     } catch (err: any) {
       setFormError(err.message || 'Error saving solve log');
@@ -150,7 +161,7 @@ export const LogPage = () => {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setPlatform(p)}
+                  onClick={() => setPlatform(curr => curr === p ? null : p)}
                   className={`py-3 px-4 rounded-xl font-bold text-sm transition border ${
                     platform === p
                       ? 'bg-indigo-500/10 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-500/5'
@@ -218,7 +229,7 @@ export const LogPage = () => {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setAccepted(true)}
+                onClick={() => setAccepted(curr => curr === true ? null : true)}
                 className={`py-5 rounded-2xl font-extrabold text-lg transition border-2 ${
                   accepted === true
                     ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-500/10'
@@ -229,7 +240,7 @@ export const LogPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setAccepted(false)}
+                onClick={() => setAccepted(curr => curr === false ? null : false)}
                 className={`py-5 rounded-2xl font-extrabold text-lg transition border-2 ${
                   accepted === false
                     ? 'bg-rose-500/15 border-rose-500 text-rose-300 shadow-lg shadow-rose-500/10'
@@ -255,7 +266,7 @@ export const LogPage = () => {
                   <button
                     key={d}
                     type="button"
-                    onClick={() => setDifficulty(d)}
+                    onClick={() => setDifficulty(curr => curr === d ? null : d)}
                     className={`py-2 px-3 rounded-lg font-semibold text-xs capitalize transition border ${
                       difficulty === d
                         ? colors.on
@@ -266,6 +277,61 @@ export const LogPage = () => {
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Source Type */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">Source Type</label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['practice', 'sheet', 'contest'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSourceType(curr => curr === s ? null : s)}
+                  className={`py-3 px-4 rounded-xl font-bold text-sm transition border ${
+                    sourceType === s
+                      ? 'bg-indigo-500/10 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-500/5'
+                      : 'bg-slate-950/40 border-slate-800 hover:bg-slate-800/50 text-slate-400'
+                  }`}
+                >
+                  {s === 'practice' ? 'Practice' : s === 'sheet' ? 'Sheet' : 'Contest'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Submission Counters */}
+          <div className="space-y-3">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">Submission Counters</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: 'WA (Wrong)', val: wa, set: setWa },
+                { label: 'TLE (Time)', val: tle, set: setTle },
+                { label: 'RE (Runtime)', val: re, set: setRe },
+                { label: 'CE (Compile)', val: ce, set: setCe },
+              ].map(c => (
+                <div key={c.label} className="bg-slate-950/40 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-400">{c.label}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => c.set(v => Math.max(0, v - 1))}
+                      className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 flex items-center justify-center font-bold text-lg select-none"
+                    >
+                      -
+                    </button>
+                    <span className="w-6 text-center font-mono font-bold text-base text-white">{c.val}</span>
+                    <button
+                      type="button"
+                      onClick={() => c.set(v => v + 1)}
+                      className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 flex items-center justify-center font-bold text-lg select-none"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

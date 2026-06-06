@@ -4,15 +4,20 @@ export interface SolveLog {
   solveId: string;
   userId: string;
   teamId: string;          // first team or '' if no team
-  platform: 'codeforces' | 'atcoder' | 'leetcode';
+  platform?: 'codeforces' | 'atcoder' | 'leetcode' | null;
   problemName: string;
-  problemLink: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  problemLink?: string | null;
+  difficulty?: 'easy' | 'medium' | 'hard' | null;
   totalTime: number;       // in minutes
-  accepted: boolean;
-  notes: string;
+  accepted?: boolean | null;
+  notes?: string | null;
   xpEarned: number;
   solvedAt: Timestamp;
+  sourceType?: 'practice' | 'sheet' | 'contest' | null;
+  wa?: number | null;
+  tle?: number | null;
+  re?: number | null;
+  ce?: number | null;
 }
 
 export interface UserProfile {

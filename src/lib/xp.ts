@@ -1,15 +1,29 @@
-/** Simplified XP formula — no source bonus, no hint penalty, no WA penalty */
 export function calculateXP(solve: {
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty?: 'easy' | 'medium' | 'hard' | null;
   totalTime: number;  // in minutes
-  accepted: boolean;
+  accepted?: boolean | null;
+  wa?: number | null;
+  tle?: number | null;
+  sourceType?: 'practice' | 'sheet' | 'contest' | null;
 }): { xp: number } {
   if (!solve.accepted) return { xp: 0 };
 
-  const base       = { easy: 10, medium: 25, hard: 60 }[solve.difficulty];
-  const expectedMin = { easy: 20, medium: 40, hard: 90 }[solve.difficulty];
+  const diff = solve.difficulty || 'medium';
+  const base = { easy: 10, medium: 25, hard: 60 }[diff];
+  const expectedMin = { easy: 20, medium: 40, hard: 90 }[diff];
+
+  const rawPenalty = (solve.wa ?? 0) * 2 + (solve.tle ?? 0) * 1;
+  const penalty = Math.min(rawPenalty, base * 0.4);
+
   const speedBonus = solve.totalTime < expectedMin ? 5 : 0;
-  const xp         = Math.max(base + speedBonus, 3);
+
+  const sourceBonus = {
+    contest: 10,
+    sheet: 5,
+    practice: 0
+  }[solve.sourceType || 'practice'] ?? 0;
+
+  const xp = Math.max(base - penalty + speedBonus + sourceBonus, 3);
 
   return { xp };
 }

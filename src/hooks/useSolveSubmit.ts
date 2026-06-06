@@ -52,14 +52,28 @@ export function useSolveSubmit() {
     setError(null);
 
     try {
-      // ── 1. Build the solve document ──────────────────────────────────────
       const solveRef = doc(collection(db, 'solves'));
       const teamId   = (effectiveProfile.teams ?? [])[0] ?? '';
 
-      const { xp } = calculateXP(solveData);
+      const sanitizedSolveData = {
+        platform:    solveData.platform ?? null,
+        problemName: solveData.problemName,
+        problemLink: solveData.problemLink ?? null,
+        difficulty:  solveData.difficulty ?? null,
+        totalTime:   solveData.totalTime,
+        accepted:    solveData.accepted ?? null,
+        notes:       solveData.notes ?? null,
+        sourceType:  solveData.sourceType ?? null,
+        wa:          solveData.wa ?? null,
+        tle:         solveData.tle ?? null,
+        re:          solveData.re ?? null,
+        ce:          solveData.ce ?? null,
+      };
+
+      const { xp } = calculateXP(sanitizedSolveData);
 
       const finalSolve: SolveLog = {
-        ...solveData,
+        ...sanitizedSolveData,
         solveId:  solveRef.id,
         userId:   effectiveProfile.uid,
         teamId,
