@@ -44,7 +44,9 @@ I have successfully completed the implementation of the **Username & Friends Sys
 - Sanitized the profile update payload (`userUpdates`) in [useSolveSubmit.ts](file:///d:/CPtracker/src/hooks/useSolveSubmit.ts) to guarantee no field resolves to `undefined`.
 - Used nullish coalescing:
   `streakFreezeUsedMonth: newStreakFreezeMonth ?? effectiveProfile?.streakFreezeUsedMonth ?? null`
-- Checked adjacent properties (`solves`, `hours`, `xp`, `rank`, `streak`, `lastSolveDate`, `badges`) and applied proper safety fallbacks (`?? 0`, `?? null`, `?? []`).
+- Checked adjacent properties (`solves`, `hours`, `xp`, `rank`, `streak`, `lastSolveDate`, `badges`) and applied proper safety fallbacks (`?? 0`, `?? null`, `?? []`).### 6. Firebase Hosting & GitHub Actions CI/CD Pipeline
+- **`firebase.json`**: Configured for single-page applications with the public folder set to `"dist"` to match the Vite build output.
+- **GitHub Workflows**: Setup automated workflows under `.github/workflows/` (for merges to `main` and pull requests) to run `npm ci && npm run build` and deploy the builds directly to Firebase Hosting via the `FirebaseExtended/action-hosting-deploy` action.
 
 
 ---
