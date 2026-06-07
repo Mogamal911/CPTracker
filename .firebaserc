@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "cptracker911"
-  }
+  },
+  "targets": {
+    "cptracker911": {
+      "hosting": {
+        "cptracker911": [
+          "cptracker911"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

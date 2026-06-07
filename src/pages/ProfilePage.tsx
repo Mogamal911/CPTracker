@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../hooks/useAuth';
 import { updateProfile } from 'firebase/auth';
 import { useGroups } from '../hooks/useGroups';
@@ -326,7 +325,7 @@ export default function ProfilePage() {
   };
 
 
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -437,46 +436,47 @@ export default function ProfilePage() {
       return;
     }
     
-    setUploadProgress(0);
-    try {
-      const storageInstance = getStorage();
-      const avatarRef = ref(storageInstance, `users/${user.uid}/avatar.jpg`);
-      
-      const downloadURL = await new Promise<string>((resolve, reject) => {
-        const uploadTask = uploadBytesResumable(avatarRef, file, {
-          contentType: file.type,
-        });
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    
+    if (!cloudName || !uploadPreset) {
+      showToast('Upload failed, try again', 'error');
+      console.error('Cloudinary config is missing. Please set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your environment.');
+      return;
+    }
 
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(Math.round(progress));
-          },
-          (error) => {
-            console.error('Upload error:', error);
-            reject(error);
-          },
-          async () => {
-            try {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(url);
-            } catch (err) {
-              reject(err);
-            }
-          }
-        );
-      });
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+      formData.append('public_id', `avatars/${user.uid}`);
+      formData.append('folder', 'cp-tracker-avatars');
+
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        { method: 'POST', body: formData }
+      );
       
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
-      await updateProfile(user, { photoURL: downloadURL });
+      if (!res.ok) {
+        throw new Error(`Cloudinary API returned ${res.status}`);
+      }
       
-      showToast('Photo updated successfully', 'success');
+      const data = await res.json();
+      const secureUrl = data.secure_url;
+      if (!secureUrl) {
+        throw new Error('No secure_url returned by Cloudinary API');
+      }
+
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: secureUrl });
+      await updateProfile(user, { photoURL: secureUrl });
+      
+      showToast('Photo updated', 'success');
     } catch (error: any) {
-      console.error('Upload failed:', error);
-      showToast(`Upload failed — Please try again`, 'error');
+      console.error('Upload error:', error);
+      showToast('Upload failed, try again', 'error');
     } finally {
-      setUploadProgress(null);
+      setUploading(false);
     }
   };
 
@@ -1039,7 +1039,7 @@ export default function ProfilePage() {
         {/* Avatar Settings */}
         <section className="cp-card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div 
-            onClick={() => { if (uploadProgress === null) document.getElementById('avatar-file-input')?.click(); }}
+            onClick={() => { if (!uploading) document.getElementById('avatar-file-input')?.click(); }}
             style={{ 
               position: 'relative', 
               width: 80, 
@@ -1047,7 +1047,7 @@ export default function ProfilePage() {
               borderRadius: '50%', 
               overflow: 'hidden', 
               border: '2px solid var(--border)', 
-              cursor: uploadProgress !== null ? 'not-allowed' : 'pointer',
+              cursor: uploading ? 'not-allowed' : 'pointer',
               background: 'var(--bg-surface-2)',
               display: 'flex',
               alignItems: 'center',
@@ -1063,7 +1063,7 @@ export default function ProfilePage() {
             )}
             
             {/* Hover overlay with Camera Icon */}
-            {uploadProgress === null && (
+            {!uploading && (
               <div 
                 style={{ 
                   position: 'absolute', 
@@ -1082,12 +1082,12 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Circular Progress Indicator overlay */}
-            {uploadProgress !== null && (
+            {/* Simple loading spinner over the avatar while uploading */}
+            {uploading && (
               <div style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'rgba(0,0,0,0.75)',
+                background: 'rgba(0,0,0,0.6)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1095,29 +1095,13 @@ export default function ProfilePage() {
                 zIndex: 10
               }}>
                 <div style={{
-                  position: 'relative',
-                  width: '48px',
-                  height: '48px',
+                  width: 24,
+                  height: 24,
+                  border: '2px solid var(--accent)',
+                  borderTopColor: 'transparent',
                   borderRadius: '50%',
-                  background: `conic-gradient(var(--accent) ${uploadProgress * 3.6}deg, rgba(255,255,255,0.15) 0deg)`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <div style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '50%',
-                    background: '#161b22',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '10px',
-                    fontWeight: 800
-                  }}>
-                    {uploadProgress}%
-                  </div>
-                </div>
+                  animation: 'spin 0.6s linear infinite'
+                }} />
               </div>
             )}
           </div>
@@ -1127,7 +1111,7 @@ export default function ProfilePage() {
             type="file" 
             accept="image/*" 
             onChange={handleAvatarChange} 
-            disabled={uploadProgress !== null} 
+            disabled={uploading} 
             style={{ display: 'none' }} 
           />
 
