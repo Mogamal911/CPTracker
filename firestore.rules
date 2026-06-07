@@ -13,9 +13,9 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Users — read allowed for any logged-in user; write restricted to owner
+    // Users — read allowed for everyone (including guests); write restricted to owner
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if isOwner(userId);
     }
 
