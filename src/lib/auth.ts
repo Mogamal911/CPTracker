@@ -1,5 +1,5 @@
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import type { UserProfile } from '../types';
 
@@ -47,6 +47,7 @@ export const createUserProfile = async (
     weeklyProblems: 0,
     weeklyHours: 0,
     badges: [],
+    createdAt: serverTimestamp(),
   };
 
   const userDocRef = doc(db, 'users', uid);

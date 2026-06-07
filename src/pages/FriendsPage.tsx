@@ -1,8 +1,10 @@
+// src/pages/FriendsPage.tsx
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useFriends } from '../hooks/useFriends';
 import { searchUsersByUsername } from '../services/friendService';
 import { getRank } from '../lib/xp';
+import { RankBadge } from '../components/RankBadge';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { UserProfile } from '../types';
@@ -14,174 +16,122 @@ export const FriendsPage = () => {
   const [friendsProfiles, setFriendsProfiles] = useState<UserProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery,   setSearchQuery]   = useState('');
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [searching,     setSearching]     = useState(false);
 
-  // Fetch profiles for the friendUids list
   useEffect(() => {
-    if (friendUids.length === 0) {
-      setFriendsProfiles([]);
-      return;
-    }
-
+    if (friendUids.length === 0) { setFriendsProfiles([]); return; }
     setLoadingProfiles(true);
     const usersRef = collection(db, 'users');
-    const chunkSize = 30;
     const chunks: string[][] = [];
-    for (let i = 0; i < friendUids.length; i += chunkSize) {
-      chunks.push(friendUids.slice(i, i + chunkSize));
-    }
+    for (let i = 0; i < friendUids.length; i += 30) chunks.push(friendUids.slice(i, i + 30));
 
-    Promise.all(
-      chunks.map(chunk =>
-        getDocs(query(usersRef, where('uid', 'in', chunk)))
-          .then(snap => snap.docs.map(doc => doc.data() as UserProfile))
-      )
-    )
+    Promise.all(chunks.map(chunk => getDocs(query(usersRef, where('uid', 'in', chunk))).then(s => s.docs.map(d => d.data() as UserProfile))))
       .then(results => {
         const flat = results.flat();
         flat.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
         setFriendsProfiles(flat);
-        setLoadingProfiles(false);
       })
-      .catch(err => {
-        console.error('Error fetching friends profiles:', err);
-        setLoadingProfiles(false);
-      })
-      .finally(() => {
-        setLoadingProfiles(false);
-      });
+      .catch(err => console.error('Error fetching friends profiles:', err))
+      .finally(() => setLoadingProfiles(false));
   }, [friendUids]);
 
-  // Handle prefix search
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
     setSearching(true);
     const delay = setTimeout(async () => {
       try {
         const results = await searchUsersByUsername(searchQuery);
-        // Exclude current user from search results
-        const filtered = results.filter(r => r.uid !== user?.uid);
-        setSearchResults(filtered);
-      } catch (err) {
-        console.error('Search error:', err);
-      } finally {
-        setSearching(false);
-      }
+        setSearchResults(results.filter(r => r.uid !== user?.uid));
+      } catch (err) { console.error('Search error:', err); }
+      finally { setSearching(false); }
     }, 400);
-
     return () => clearTimeout(delay);
   }, [searchQuery, user?.uid]);
 
-  const handleAdd = async (uid: string) => {
-    try {
-      await addFriend(uid);
-    } catch (err: any) {
-      alert(err.message || 'Failed to add friend');
-    }
-  };
-
+  const handleAdd    = async (uid: string) => { try { await addFriend(uid); } catch (err: any) { alert(err.message || 'Failed to add friend'); } };
   const handleRemove = async (uid: string) => {
     if (!window.confirm('Are you sure you want to remove this friend?')) return;
-    try {
-      await removeFriend(uid);
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove friend');
-    }
+    try { await removeFriend(uid); } catch (err: any) { alert(err.message || 'Failed to remove friend'); }
   };
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-        <div className="text-center bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md space-y-4">
-          <span className="text-4xl">🔒</span>
-          <h2 className="text-lg font-bold text-white">Sign In Required</h2>
-          <p className="text-slate-400 text-sm">
-            Sign in to search for programmers and build your friends list.
-          </p>
+      <div style={{ minHeight: '100vh', background: 'var(--bg-page)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+        <div style={{ textAlign: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '2rem', maxWidth: 400 }}>
+          <span style={{ fontSize: 40 }}>🔒</span>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: '12px 0 8px' }}>Sign In Required</h2>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>Sign in to search for programmers and build your friends list.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-8 space-y-8 relative">
-      <div className="absolute top-10 left-10 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+    <div className="page-wrap" style={{ position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 40, left: 40, width: 384, height: 384, background: 'rgba(29,158,117,0.04)', borderRadius: '50%', filter: 'blur(60px)', pointerEvents: 'none' }} />
 
-      <div className="max-w-6xl mx-auto space-y-8 relative z-10">
-        
+      <div style={{ maxWidth: 1024, margin: '0 auto', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
         {/* Header */}
-        <header className="bg-slate-900/40 border border-slate-800/80 backdrop-blur-md rounded-2xl p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-center text-2xl">
-              👥
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-white">Friends & Connections</h1>
-              <p className="text-sm text-slate-400 mt-0.5">
-                Follow programmers to compare progress and view their solves on your custom friends leaderboard.
-              </p>
-            </div>
+        <div className="cp-card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, background: 'rgba(29,158,117,0.1)', border: '1px solid rgba(29,158,117,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
+            <i className="ti ti-users" style={{ color: 'var(--accent)' }} />
           </div>
-        </header>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px' }}>Friends &amp; Connections</h1>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+              Follow programmers to compare progress and view their solves on your custom friends leaderboard.
+            </p>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Main List */}
-          <div className="lg:col-span-2 space-y-6">
-            <section className="bg-slate-900/40 border border-slate-800/80 backdrop-blur-md rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-800/80 flex justify-between items-center">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+
+            {/* Friends list */}
+            <div className="cp-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', margin: 0 }}>
                   Your Friends ({friendsProfiles.length})
                 </h2>
               </div>
 
               {friendsLoading || loadingProfiles ? (
-                <div className="py-20 text-center text-slate-500 italic text-sm">
-                  Loading friends list...
-                </div>
+                <div style={{ padding: '5rem', textAlign: 'center', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: 14 }}>Loading…</div>
               ) : friendsProfiles.length === 0 ? (
-                <div className="py-20 text-center text-slate-500 space-y-2">
-                  <div className="text-3xl">👋</div>
-                  <p className="text-sm">Search for friends by username to add them</p>
+                <div style={{ padding: '5rem 2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
+                  <p style={{ fontSize: 14, margin: 0 }}>Search for friends by username to add them</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-800/40">
-                  {friendsProfiles.map((friend) => {
+                <div>
+                  {friendsProfiles.map(friend => {
                     const rank = getRank(friend.xp ?? 0);
                     return (
-                      <div
-                        key={friend.uid}
-                        className="flex items-center justify-between px-6 py-4 hover:bg-slate-900/20 transition"
-                      >
-                        <div className="flex items-center gap-4">
+                      <div key={friend.uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                           <img
                             src={friend.photoURL || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(friend.username || friend.displayName)}
                             alt={friend.username || friend.displayName}
-                            className="w-10 h-10 rounded-xl object-cover border border-slate-800"
+                            style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover', border: '1px solid var(--border)' }}
                           />
                           <div>
-                            <div className="font-semibold text-white text-sm flex items-center gap-2">
+                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                               {friend.username || friend.displayName}
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold font-mono">
-                                {rank}
-                              </span>
+                              <RankBadge rank={rank} size="sm" />
                             </div>
-                            <div className="text-xs text-slate-500 font-mono mt-0.5">
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
                               {friend.totalSolves ?? 0} solves · {friend.streak ?? 0}🔥 streak · {friend.xp ?? 0} XP
                             </div>
                           </div>
                         </div>
-
                         <button
                           onClick={() => handleRemove(friend.uid)}
-                          className="px-3.5 py-1.5 bg-slate-950 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          style={{ padding: '6px 14px', background: 'var(--bg-surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                          onMouseOver={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--danger)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(226,75,74,0.3)'; }}
+                          onMouseOut={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; }}
                         >
                           Remove
                         </button>
@@ -190,83 +140,58 @@ export const FriendsPage = () => {
                   })}
                 </div>
               )}
-            </section>
-          </div>
+            </div>
 
-          {/* Search Side Panel */}
-          <div className="space-y-6">
-            <section className="bg-slate-900/40 border border-slate-800/80 backdrop-blur-md rounded-2xl p-6 space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                Find Friends
-              </h2>
+            {/* Search panel */}
+            <div className="cp-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <h2 style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', margin: 0 }}>Find Friends</h2>
 
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Enter username prefix..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition duration-150"
-                />
-              </div>
+              <input
+                type="text" value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Enter username prefix..."
+                className="cp-input"
+              />
 
               {searching ? (
-                <div className="py-8 text-center text-slate-500 text-xs font-mono">
-                  Searching...
-                </div>
+                <div style={{ textAlign: 'center', padding: '2rem 0', fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>Searching…</div>
               ) : searchResults.length === 0 && searchQuery.trim() ? (
-                <div className="py-8 text-center text-slate-600 text-xs italic">
-                  No users match "{searchQuery}"
-                </div>
+                <div style={{ textAlign: 'center', padding: '2rem 0', fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic' }}>No users match "{searchQuery}"</div>
               ) : (
-                <div className="space-y-3">
-                  {searchResults.map((userResult) => {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {searchResults.map(userResult => {
                     const isFriend = friendUids.includes(userResult.uid);
                     const rank = getRank(userResult.xp ?? 0);
                     return (
-                      <div
-                        key={userResult.uid}
-                        className="flex items-center justify-between p-3.5 bg-slate-950 border border-slate-800/80 rounded-xl gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
+                      <div key={userResult.uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-surface-2)', border: '1px solid var(--border)', borderRadius: 10, gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                           <img
                             src={userResult.photoURL || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(userResult.username || userResult.displayName)}
                             alt={userResult.username || userResult.displayName}
-                            className="w-8 h-8 rounded-lg object-cover shrink-0"
+                            style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
                           />
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-white truncate">
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {userResult.username || userResult.displayName}
                             </p>
-                            <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
-                              {rank} · {userResult.totalSolves ?? 0} solves
-                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <RankBadge rank={rank} size="sm" />
+                              <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{userResult.totalSolves ?? 0} solves</span>
+                            </div>
                           </div>
                         </div>
-
                         {isFriend ? (
-                          <button
-                            onClick={() => handleRemove(userResult.uid)}
-                            className="shrink-0 px-2.5 py-1 bg-slate-900 border border-slate-800 text-rose-400 hover:bg-rose-500/10 rounded-lg text-[10px] font-bold transition cursor-pointer"
-                          >
-                            Remove
-                          </button>
+                          <button onClick={() => handleRemove(userResult.uid)} style={{ padding: '4px 10px', background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--danger)', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
                         ) : (
-                          <button
-                            onClick={() => handleAdd(userResult.uid)}
-                            className="shrink-0 px-2.5 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition cursor-pointer"
-                          >
-                            Add Friend
-                          </button>
+                          <button onClick={() => handleAdd(userResult.uid)} style={{ padding: '4px 10px', background: 'var(--accent)', color: 'white', borderRadius: 6, border: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Add Friend</button>
                         )}
                       </div>
                     );
                   })}
                 </div>
               )}
-            </section>
+            </div>
           </div>
-
         </div>
       </div>
     </div>

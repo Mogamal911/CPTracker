@@ -1,29 +1,13 @@
 import { useState } from 'react';
-import { doc, collection, writeBatch, Timestamp } from 'firebase/firestore';
+import { doc, collection, writeBatch, Timestamp, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './useAuth';
 import { calculateXP, getRank } from '../lib/xp';
 import { evaluateBadges } from '../lib/badges';
 import type { SolveLog, UserProfile } from '../types';
 
-function getTodayString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function getMonthString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function diffDays(dateStrA: string, dateStrB: string): number {
-  const msA = new Date(dateStrA).getTime();
-  const msB = new Date(dateStrB).getTime();
-  return Math.round((msA - msB) / (1000 * 60 * 60 * 24));
-}
-
 export function useSolveSubmit() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
@@ -32,128 +16,132 @@ export function useSolveSubmit() {
   ) => {
     if (!user) throw new Error('You must be signed in to log a solve.');
 
-    // Fallback stub if Firestore profile hasn't loaded yet
-    let effectiveProfile: UserProfile = profile ?? {
-      uid:           user.uid,
-      displayName:   user.displayName ?? 'Unknown',
-      photoURL:      user.photoURL ?? '',
-      teams:         [],
-      xp:            0,
-      rank:          'Newbie',
-      streak:        0,
-      totalSolves:   0,
-      totalHours:    0,
-      weeklyProblems: 0,
-      weeklyHours:   0,
-      badges:        [],
-    };
-
     setSubmitting(true);
     setError(null);
 
     try {
       const solveRef = doc(collection(db, 'solves'));
-      const teamId   = (effectiveProfile.teams ?? [])[0] ?? '';
+      const userRef  = doc(db, 'users', user.uid);
+
+      // Determine XP using the centralized formula
+      let xpEarned = 0;
+      if (solveData.accepted) {
+        const xpCalc = calculateXP({
+          difficulty: solveData.difficulty,
+          totalTime: solveData.totalTime,
+          accepted: true,
+          wa: solveData.wa,
+          tle: solveData.tle,
+          sourceType: solveData.sourceType,
+        });
+        xpEarned = xpCalc.xp;
+      }
 
       const sanitizedSolveData = {
-        platform:    solveData.platform ?? null,
-        problemName: solveData.problemName,
-        problemLink: solveData.problemLink ?? null,
-        difficulty:  solveData.difficulty ?? null,
-        totalTime:   solveData.totalTime,
-        accepted:    solveData.accepted ?? null,
-        notes:       solveData.notes ?? null,
-        sourceType:  solveData.sourceType ?? null,
-        wa:          solveData.wa ?? null,
-        tle:         solveData.tle ?? null,
-        re:          solveData.re ?? null,
-        ce:          solveData.ce ?? null,
+        platform:     solveData.platform ?? null,
+        problemName:  solveData.problemName,
+        problemLink:  solveData.problemLink ?? null,
+        difficulty:   solveData.difficulty ?? null,
+        totalTime:    solveData.totalTime,
+        accepted:     solveData.accepted ?? null,
+        notes:        solveData.notes ?? null,
+        sourceType:   solveData.sourceType ?? null,
+        wa:           solveData.wa ?? null,
+        tle:          solveData.tle ?? null,
+        re:           solveData.re ?? null,
+        ce:           solveData.ce ?? null,
+        wrongAnswers: solveData.wrongAnswers ?? solveData.wa ?? null,
       };
-
-      const { xp } = calculateXP(sanitizedSolveData);
 
       const finalSolve: SolveLog = {
         ...sanitizedSolveData,
         solveId:  solveRef.id,
-        userId:   effectiveProfile.uid,
-        teamId,
-        xpEarned: xp,
+        userId:   user.uid,
+        teamId:   '', // placeholder or set teamId if needed, we'll keep it simple
+        xpEarned,
         solvedAt: Timestamp.now(),
       };
 
-      // ── 2. Profile stat projections ──────────────────────────────────────
-      const nextSolves = effectiveProfile.totalSolves + (solveData.accepted ? 1 : 0);
-      const nextXP     = effectiveProfile.xp + xp;
-      const nextHours  = effectiveProfile.totalHours + solveData.totalTime / 60;
-      const newRank    = getRank(nextXP);
-
-      // ── 3. Streak logic with one-per-month freeze ────────────────────────
-      const todayStr              = getTodayString();
-      const monthStr              = getMonthString();
-      let newStreak               = effectiveProfile.streak;
-      let newStreakFreezeMonth: string | null = effectiveProfile.streakFreezeUsedMonth ?? null;
-      let streakFroze             = false;
-
-      if (!effectiveProfile.lastSolveDate) {
-        newStreak = 1;
-      } else if (effectiveProfile.lastSolveDate !== todayStr) {
-        const gap = diffDays(todayStr, effectiveProfile.lastSolveDate);
-        if (gap === 1) {
-          newStreak = effectiveProfile.streak + 1;
-        } else if (gap === 2 && effectiveProfile.streak >= 7 && newStreakFreezeMonth !== monthStr) {
-          newStreakFreezeMonth  = monthStr;
-          streakFroze           = true;
-        } else {
-          newStreak = 1;
-        }
-      }
-
-      // ── 4. Badge evaluation ──────────────────────────────────────────────
-      const { newlyUnlocked, allUnlocked } = evaluateBadges(
-        effectiveProfile.badges ?? [],
-        { totalSolves: nextSolves, streak: newStreak }
-      );
-
-      // ── 5. Rank-up detection ─────────────────────────────────────────────
-      const rankChanged   = effectiveProfile.rank !== newRank;
-      const pendingRankUp = rankChanged ? newRank : null;
-
-      // ── 6. Batched Firestore write ───────────────────────────────────────
-      const batch   = writeBatch(db);
-      const userRef = doc(db, 'users', effectiveProfile.uid);
-
+      // ── 1. Run the primary atomic batched write ──
+      const batch = writeBatch(db);
       batch.set(solveRef, finalSolve);
 
-      const userUpdates: Record<string, any> = {
-        totalSolves:           nextSolves ?? 0,
-        totalHours:            nextHours ?? 0,
-        xp:                    nextXP ?? 0,
-        rank:                  newRank ?? 'Newbie',
-        streak:                newStreak ?? 0,
-        lastSolveDate:         todayStr ?? null,
-        badges:                allUnlocked ?? [],
-        streakFreezeUsedMonth: newStreakFreezeMonth ?? effectiveProfile?.streakFreezeUsedMonth ?? null,
+      // totalTime is in minutes, so hours = totalTime / 60
+      const hoursIncrement = solveData.totalTime / 60;
+
+      if (solveData.accepted) {
+        batch.update(userRef, {
+          xp:          increment(xpEarned),
+          totalSolves: increment(1),
+          totalHours:  increment(hoursIncrement),
+        });
+      } else {
+        batch.update(userRef, {
+          totalHours:  increment(hoursIncrement),
+        });
+      }
+
+      await batch.commit();
+
+      // ── 2. Read the new fresh profile state after the write ──
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        throw new Error('User profile does not exist.');
+      }
+      const freshProfile = userSnap.data() as UserProfile;
+
+      // ── 3. Update Rank ──
+      const newRank = getRank(freshProfile.xp);
+
+      // ── 4. Update Streak ──
+      const today = new Date().toISOString().split('T')[0];
+      const dYesterday = new Date();
+      dYesterday.setDate(dYesterday.getDate() - 1);
+      const yesterday = dYesterday.toISOString().split('T')[0];
+
+      const lastSolveDate = freshProfile.lastSolveDate;
+      let nextStreak = freshProfile.streak || 0;
+
+      if (!lastSolveDate) {
+        nextStreak = 1;
+      } else if (lastSolveDate === yesterday) {
+        nextStreak += 1;
+      } else if (lastSolveDate === today) {
+        // Unchanged
+      } else if (lastSolveDate < yesterday) {
+        nextStreak = 1;
+      }
+
+      // ── 5. Check Badge Conditions ──
+      const { newlyUnlocked, allUnlocked } = evaluateBadges(
+        freshProfile.badges || [],
+        { totalSolves: freshProfile.totalSolves, streak: nextStreak }
+      );
+
+      // ── 6. Save updates back to Firestore doc ──
+      const userUpdates: any = {
+        rank:          newRank,
+        streak:        nextStreak,
+        lastSolveDate: today,
+        badges:        allUnlocked,
       };
 
       if (newlyUnlocked.length > 0) {
         userUpdates.newlyUnlockedBadges = newlyUnlocked;
       }
-      if (pendingRankUp) {
-        userUpdates.pendingRankUp = pendingRankUp;
+      if (freshProfile.rank !== newRank) {
+        userUpdates.pendingRankUp = newRank;
       }
 
-      batch.update(userRef, userUpdates);
-
-      await batch.commit();
+      await updateDoc(userRef, userUpdates);
 
       return {
         success:   true,
-        xpEarned:  xp,
+        xpEarned,
         accepted:  solveData.accepted,
-        rankUp:    rankChanged,
-        newRank:   rankChanged ? newRank : undefined,
+        rankUp:    freshProfile.rank !== newRank,
+        newRank:   freshProfile.rank !== newRank ? newRank : undefined,
         newBadges: newlyUnlocked,
-        streakFroze,
       };
 
     } catch (err: any) {

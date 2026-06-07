@@ -1,22 +1,11 @@
+// src/components/RankUpOverlay.tsx
 import React, { useEffect, useState } from 'react';
+import { RankBadge } from './RankBadge';
 
 interface Props {
   oldRank: string;
   newRank: string;
   onDismiss: () => void;
-}
-
-const RANK_COLORS: Record<string, string> = {
-  Newbie:            '#9ca3af',
-  Pupil:             '#22c55e',
-  Specialist:        '#14b8a6',
-  Expert:            '#3b82f6',
-  'Candidate Master':'#a855f7',
-  Master:            '#f59e0b',
-};
-
-function getColor(rank: string) {
-  return RANK_COLORS[rank] ?? '#6366f1';
 }
 
 /**
@@ -25,8 +14,6 @@ function getColor(rank: string) {
  */
 export function RankUpOverlay({ oldRank, newRank, onDismiss }: Props) {
   const [phase, setPhase] = useState<'enter' | 'hold' | 'exit'>('enter');
-  const newColor  = getColor(newRank);
-  const oldColor  = getColor(oldRank);
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('hold'), 600);
@@ -63,17 +50,13 @@ export function RankUpOverlay({ oldRank, newRank, onDismiss }: Props) {
         <h2 className="rankup-card__headline">🎉 Rank Up!</h2>
 
         <div className="rankup-card__rank-row">
-          <div className="rankup-card__from" style={{ color: oldColor }}>
-            {oldRank}
-          </div>
+          <RankBadge rank={oldRank} size="lg" />
           <div className="rankup-card__arrow">→</div>
-          <div className="rankup-card__to" style={{ color: newColor }}>
-            {newRank}
-          </div>
+          <RankBadge rank={newRank} size="lg" />
         </div>
 
         <p className="rankup-card__sub">
-          You've reached&nbsp;<strong style={{ color: newColor }}>{newRank}</strong>!
+          You've reached&nbsp;<strong>{newRank}</strong>!
           Keep grinding!
         </p>
         <button className="rankup-card__btn" onClick={onDismiss}>

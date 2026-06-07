@@ -18,6 +18,7 @@ export interface SolveLog {
   tle?: number | null;
   re?: number | null;
   ce?: number | null;
+  wrongAnswers?: number | null;  // alias for wa, used in analytics first-AC rate
 }
 
 export interface UserProfile {
@@ -42,6 +43,10 @@ export interface UserProfile {
   streakFreezeUsedMonth?: string;  // 'YYYY-MM'
   pendingRankUp?: string;
   newlyUnlockedBadges?: string[];
+  dailyGoalProblems?: number;      // default 2
+  dailyGoalHours?: number;         // default 1
+  bio?: string;
+  createdAt?: any;
 }
 
 export interface Team {

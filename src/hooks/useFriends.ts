@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './useAuth';
-import { addFriend as apiAddFriend, removeFriend as apiRemoveFriend } from '../services/friendService';
+import { sendFriendRequest, removeFriend as apiRemoveFriend } from '../services/friendService';
 
 export function useFriends() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [friendUids, setFriendUids] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -35,8 +35,10 @@ export function useFriends() {
   }, [user]);
 
   const addFriend = async (friendUid: string) => {
-    if (!user) throw new Error('Must be signed in to add friends.');
-    await apiAddFriend(user.uid, friendUid);
+    if (!user || !profile) throw new Error('Must be signed in to add friends.');
+    const meName = profile.username || profile.displayName || user.displayName || 'User';
+    const mePhoto = profile.photoURL || '';
+    await sendFriendRequest(user.uid, friendUid, meName, mePhoto);
   };
 
   const removeFriend = async (friendUid: string) => {
