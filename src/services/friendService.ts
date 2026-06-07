@@ -134,6 +134,10 @@ export async function sendFriendRequest(
     createdAt: Timestamp.now(),
   });
 
+  // Create the request sender's friendship record as "requested"
+  const friendRef1 = doc(db, 'friendships', fromUid, 'friends', toUid);
+  batch.set(friendRef1, { friendUid: toUid, status: 'requested', since: Timestamp.now() });
+
   const notificationRef = doc(db, 'notifications', toUid, 'items', requestId);
   batch.set(notificationRef, {
     type: 'friend_request',
@@ -150,9 +154,17 @@ export async function sendFriendRequest(
 }
 
 export async function cancelFriendRequest(requestId: string, toUid: string): Promise<void> {
+  const requestSnap = await getDoc(doc(db, 'friendRequests', requestId));
+  const fromUid = requestSnap.data()?.fromUid;
+
   const batch = writeBatch(db);
   batch.delete(doc(db, 'friendRequests', requestId));
   batch.delete(doc(db, 'notifications', toUid, 'items', requestId));
+  
+  if (fromUid) {
+    batch.delete(doc(db, 'friendships', fromUid, 'friends', toUid));
+  }
+  
   await batch.commit();
 }
 
@@ -169,15 +181,21 @@ export async function acceptFriendRequest(
   const notificationRef = doc(db, 'notifications', toUid, 'items', requestId);
   batch.update(notificationRef, { read: true });
 
-  // Only write to the accepting user's (toUid) friendships collection.
-  // Writing to the sender's (fromUid) subcollection is not allowed by security rules to preserve privacy.
+  // 1. Create/Update the recipient's friendship document setting status to "mutual"
   const friendRef2 = doc(db, 'friendships', toUid, 'friends', fromUid);
-  batch.set(friendRef2, { friendUid: fromUid, since: Timestamp.now() });
+  batch.set(friendRef2, { friendUid: fromUid, status: 'mutual', since: Timestamp.now() });
+
+  // 2. Update the sender's friendship document upgrading status to "mutual"
+  const friendRef1 = doc(db, 'friendships', fromUid, 'friends', toUid);
+  batch.update(friendRef1, { status: 'mutual' });
 
   await batch.commit();
 }
 
 export async function denyFriendRequest(requestId: string, toUid: string): Promise<void> {
+  const requestSnap = await getDoc(doc(db, 'friendRequests', requestId));
+  const fromUid = requestSnap.data()?.fromUid;
+
   const batch = writeBatch(db);
 
   const requestRef = doc(db, 'friendRequests', requestId);
@@ -185,6 +203,10 @@ export async function denyFriendRequest(requestId: string, toUid: string): Promi
 
   const notificationRef = doc(db, 'notifications', toUid, 'items', requestId);
   batch.update(notificationRef, { read: true });
+
+  if (fromUid) {
+    batch.delete(doc(db, 'friendships', fromUid, 'friends', toUid));
+  }
 
   await batch.commit();
 }

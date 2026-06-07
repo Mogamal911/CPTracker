@@ -21,7 +21,12 @@ export function useFriends() {
     const unsubscribe = onSnapshot(
       friendsRef,
       (snapshot) => {
-        const uids = snapshot.docs.map(doc => doc.id);
+        const uids = snapshot.docs
+          .filter(docSnap => {
+            const data = docSnap.data();
+            return data.status === 'mutual' || !data.status;
+          })
+          .map(docSnap => docSnap.id);
         setFriendUids(uids);
         setLoading(false);
       },
