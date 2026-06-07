@@ -451,7 +451,6 @@ export default function ProfilePage() {
       formData.append('file', file);
       formData.append('upload_preset', uploadPreset);
       formData.append('public_id', `avatars/${user.uid}`);
-      formData.append('folder', 'cp-tracker-avatars');
 
       const res = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
@@ -459,7 +458,7 @@ export default function ProfilePage() {
       );
       
       if (!res.ok) {
-        throw new Error(`Cloudinary API returned ${res.status}`);
+        throw new Error('Upload failed');
       }
       
       const data = await res.json();
@@ -1109,7 +1108,7 @@ export default function ProfilePage() {
           <input 
             id="avatar-file-input"
             type="file" 
-            accept="image/*" 
+            accept="image/jpeg,image/png,image/webp" 
             onChange={handleAvatarChange} 
             disabled={uploading} 
             style={{ display: 'none' }} 
