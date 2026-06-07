@@ -410,6 +410,11 @@ export default function ProfilePage() {
 
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
+      // Set a strict 5-second timeout window to prevent pipeline freeze on invalid image structures
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Image compression timed out (5s limit exceeded)'));
+      }, 5000);
+
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = (event) => {
@@ -439,6 +444,7 @@ export default function ProfilePage() {
 
           const ctx = canvas.getContext('2d');
           if (!ctx) {
+            clearTimeout(timeoutId);
             reject(new Error('Canvas 2D context is not available'));
             return;
           }
@@ -447,6 +453,7 @@ export default function ProfilePage() {
 
           canvas.toBlob(
             (blob) => {
+              clearTimeout(timeoutId);
               if (blob) {
                 resolve(blob);
               } else {
@@ -457,9 +464,15 @@ export default function ProfilePage() {
             0.7
           );
         };
-        img.onerror = (err) => reject(err);
+        img.onerror = (err) => {
+          clearTimeout(timeoutId);
+          reject(err);
+        };
       };
-      reader.onerror = (err) => reject(err);
+      reader.onerror = (err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      };
     });
   };
 
@@ -474,16 +487,15 @@ export default function ProfilePage() {
       const downloadURL = await getDownloadURL(avatarRef);
       await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
       
-      // Stop the UI loading spinner immediately upon Firestore write succeeding
-      setAvatarUploading(false);
-      
       // Update profile in the background without blocking the UI spinner
       updateProfile(user, { photoURL: downloadURL }).catch((err) => {
         console.error('Failed to update Auth profile in background:', err);
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Avatar upload error:', err);
-      alert('Failed to upload avatar.');
+      alert(`Failed to upload avatar: ${err.message || err}`);
+    } finally {
+      // Toggle off the spinner state under all outcomes (success, timeout, storage rule failure)
       setAvatarUploading(false);
     }
   };
