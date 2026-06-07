@@ -41,6 +41,8 @@ export default function NavBar() {
   // Notifications state
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showPopup, setShowPopup] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Sync collapsed state to localStorage
   useEffect(() => {
@@ -157,30 +159,42 @@ export default function NavBar() {
                   </div>
                   <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                     <button
+                      disabled={processingId === notif.requestId}
                       onClick={async () => {
+                        setProcessingId(notif.requestId);
                         try {
                           if (user) {
                             await acceptFriendRequest(notif.requestId, user.uid, notif.fromUid);
                           }
-                        } catch (err) {
-                          console.error(err);
+                        } catch (err: any) {
+                          console.error('Accept request failed:', err);
+                          setToastMessage(err.message || 'Failed to accept friend request');
+                          setTimeout(() => setToastMessage(null), 5000);
+                        } finally {
+                          setProcessingId(null);
                         }
                       }}
-                      style={{ padding: '2px 6px', fontSize: '10px', background: 'var(--accent)', border: 'none', borderRadius: '4px', color: 'white', fontWeight: 700, cursor: 'pointer' }}
+                      style={{ padding: '2px 6px', fontSize: '10px', background: 'var(--accent)', border: 'none', borderRadius: '4px', color: 'white', fontWeight: 700, cursor: 'pointer', opacity: processingId === notif.requestId ? 0.7 : 1 }}
                     >
-                      Accept
+                      {processingId === notif.requestId ? 'Accepting...' : 'Accept'}
                     </button>
                     <button
+                      disabled={processingId === notif.requestId}
                       onClick={async () => {
+                        setProcessingId(notif.requestId);
                         try {
                           if (user) {
                             await denyFriendRequest(notif.requestId, user.uid);
                           }
-                        } catch (err) {
-                          console.error(err);
+                        } catch (err: any) {
+                          console.error('Deny request failed:', err);
+                          setToastMessage(err.message || 'Failed to deny friend request');
+                          setTimeout(() => setToastMessage(null), 5000);
+                        } finally {
+                          setProcessingId(null);
                         }
                       }}
-                      style={{ padding: '2px 6px', fontSize: '10px', background: 'var(--bg-surface-2)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}
+                      style={{ padding: '2px 6px', fontSize: '10px', background: 'var(--bg-surface-2)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer', opacity: processingId === notif.requestId ? 0.7 : 1 }}
                     >
                       Deny
                     </button>
@@ -226,6 +240,18 @@ export default function NavBar() {
           </button>
         )}
       </div>
+
+      {toastMessage && (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20,
+          background: '#ff4d4d', color: 'white', padding: '12px 20px',
+          borderRadius: 8, fontWeight: 600, fontSize: '12px', zIndex: 10000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', gap: '8px'
+        }}>
+          <span>⚠️ {toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontWeight: 800, paddingLeft: '8px' }}>×</button>
+        </div>
+      )}
     </aside>
   );
 }

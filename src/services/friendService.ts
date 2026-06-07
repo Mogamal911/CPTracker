@@ -142,6 +142,7 @@ export async function sendFriendRequest(
     fromPhoto,
     requestId,
     read: false,
+    recipientId: toUid,
     createdAt: Timestamp.now(),
   });
 
@@ -168,9 +169,8 @@ export async function acceptFriendRequest(
   const notificationRef = doc(db, 'notifications', toUid, 'items', requestId);
   batch.update(notificationRef, { read: true });
 
-  const friendRef1 = doc(db, 'friendships', fromUid, 'friends', toUid);
-  batch.set(friendRef1, { friendUid: toUid, since: Timestamp.now() });
-
+  // Only write to the accepting user's (toUid) friendships collection.
+  // Writing to the sender's (fromUid) subcollection is not allowed by security rules to preserve privacy.
   const friendRef2 = doc(db, 'friendships', toUid, 'friends', fromUid);
   batch.set(friendRef2, { friendUid: fromUid, since: Timestamp.now() });
 
