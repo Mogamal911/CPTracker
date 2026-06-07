@@ -2,8 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { updateProfile } from 'firebase/auth';
 import { useGroups } from '../hooks/useGroups';
@@ -148,6 +147,17 @@ function formatDate(t: any): string {
   if (ms === 0) return 'N/A';
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
+const PRESET_AVATARS = [
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Aneesh&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Luna&backgroundColor=d1d4f9',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=ffdfbf',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Jack&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Samantha&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Leo&backgroundColor=d1d4f9'
+];
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -408,94 +418,20 @@ export default function ProfilePage() {
     return () => clearTimeout(delay);
   }, [usernameInput, profile?.username, user]);
 
-  const compressImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      // Set a strict 5-second timeout window to prevent pipeline freeze on invalid image structures
-      const timeoutId = setTimeout(() => {
-        reject(new Error('Image compression timed out (5s limit exceeded)'));
-      }, 5000);
-
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_WIDTH = 400;
-          const MAX_HEIGHT = 400;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            clearTimeout(timeoutId);
-            reject(new Error('Canvas 2D context is not available'));
-            return;
-          }
-
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              clearTimeout(timeoutId);
-              if (blob) {
-                resolve(blob);
-              } else {
-                reject(new Error('Canvas compression returned null blob'));
-              }
-            },
-            'image/jpeg',
-            0.7
-          );
-        };
-        img.onerror = (err) => {
-          clearTimeout(timeoutId);
-          reject(err);
-        };
-      };
-      reader.onerror = (err) => {
-        clearTimeout(timeoutId);
-        reject(err);
-      };
-    });
-  };
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
+  const selectAvatar = async (url: string) => {
+    if (!user) return;
     setAvatarUploading(true);
     try {
-      const compressedBlob = await compressImage(file);
-      const avatarRef = ref(storage, `avatars/${user.uid}`);
-      await uploadBytes(avatarRef, compressedBlob);
-      const downloadURL = await getDownloadURL(avatarRef);
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
       
       // Update profile in the background without blocking the UI spinner
-      updateProfile(user, { photoURL: downloadURL }).catch((err) => {
+      updateProfile(user, { photoURL: url }).catch((err) => {
         console.error('Failed to update Auth profile in background:', err);
       });
     } catch (err: any) {
-      console.error('Avatar upload error:', err);
-      alert(`Failed to upload avatar: ${err.message || err}`);
+      console.error('Avatar update error:', err);
+      alert(`Failed to update avatar: ${err.message || err}`);
     } finally {
-      // Toggle off the spinner state under all outcomes (success, timeout, storage rule failure)
       setAvatarUploading(false);
     }
   };
@@ -1057,22 +993,70 @@ export default function ProfilePage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '640px', margin: '0 auto' }}>
         
         {/* Avatar Settings */}
-        <section className="cp-card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ position: 'relative', width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border)', cursor: 'pointer' }}>
-            {profile?.photoURL ? (
-              <img src={profile.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ width: '100%', height: '100%', background: 'var(--bg-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>👤</div>
-            )}
-            <label style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', opacity: avatarUploading ? 1 : 0, transition: 'opacity 0.2s', cursor: 'pointer', fontSize: '10px' }} className="avatar-hover-label">
-              <i className="ti ti-camera" style={{ fontSize: '20px', marginBottom: 2 }} />
-              {avatarUploading ? 'Uploading...' : 'Change'}
-              <input type="file" accept="image/*" onChange={handleAvatarChange} disabled={avatarUploading} style={{ display: 'none' }} />
-            </label>
-          </div>
+        <section className="cp-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 800 }}>Profile Photo</h4>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>Hover or tap the image to upload a new avatar. Uploads directly to Firebase Storage.</p>
+            <h4 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800 }}>Choose Your Avatar</h4>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>Select from our competitive programming bot avatars. Changes are updated instantly.</p>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+            {/* Current Avatar Preview */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div style={{ position: 'relative', width: 90, height: 90, borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--accent)', boxShadow: '0 0 12px rgba(139, 92, 246, 0.25)', background: 'var(--bg-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {profile?.photoURL ? (
+                  <img src={profile.photoURL} alt="Current Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: 36 }}>👤</span>
+                )}
+                {avatarUploading && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Current Profile</span>
+            </div>
+            
+            {/* Divider line for wide screens */}
+            <div style={{ width: '1px', height: '80px', background: 'var(--border)', alignSelf: 'center' }} className="avatar-divider" />
+            
+            {/* Avatar Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', flex: 1, minWidth: '240px' }}>
+              {PRESET_AVATARS.map((url, idx) => {
+                const isSelected = profile?.photoURL === url;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => selectAvatar(url)}
+                    disabled={avatarUploading}
+                    style={{
+                      position: 'relative',
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '50%',
+                      overflow: 'hidden',
+                      border: isSelected ? '3px solid var(--accent)' : '2px solid var(--border)',
+                      background: 'var(--bg-surface-2)',
+                      padding: 0,
+                      cursor: avatarUploading ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: isSelected ? '0 0 10px rgba(139, 92, 246, 0.4)' : 'none',
+                      transform: isSelected ? 'scale(1.05)' : 'none',
+                    }}
+                    className="avatar-select-btn"
+                    title={`Avatar Preset ${idx + 1}`}
+                  >
+                    <img src={url} alt={`Preset ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {isSelected && (
+                      <div style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--accent)', color: 'white', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, border: '2px solid var(--bg-surface-1)' }}>
+                        ✓
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </section>
 
@@ -1243,10 +1227,20 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Inject CSS style for avatar hover */}
+        {/* Inject CSS style for avatar selection */}
         <style>{`
-          .avatar-hover-label:hover {
-            opacity: 1 !important;
+          .avatar-select-btn:hover {
+            border-color: var(--accent) !important;
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+          }
+          .avatar-select-btn:active {
+            transform: translateY(0) scale(0.95);
+          }
+          @media (max-width: 480px) {
+            .avatar-divider {
+              display: none;
+            }
           }
         `}</style>
       </div>
