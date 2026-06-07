@@ -1,6 +1,8 @@
-# React + TypeScript + Vite
+# CPTracker — Level Up Your Competitive Programming
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Live Production Deployment: [https://cptracker911.web.app](https://cptracker911.web.app)
+
+---
 
 Currently, two official plugins are available:
 
