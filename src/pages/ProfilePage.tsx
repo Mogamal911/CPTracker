@@ -436,37 +436,40 @@ export default function ProfilePage() {
       return;
     }
     
-    const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
-    if (!imgbbApiKey) {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    
+    if (!cloudName || !uploadPreset) {
       showToast('Upload failed, try again', 'error');
-      console.error('ImgBB API key is missing. Please set VITE_IMGBB_API_KEY in your environment.');
+      console.error('Cloudinary config is missing. Please set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your environment.');
       return;
     }
 
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('image', file);
-      formData.append('key', imgbbApiKey);
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+      formData.append('public_id', `avatars/${user.uid}`);
+      formData.append('folder', 'cp-tracker-avatars');
 
-      const res = await fetch('https://api.imgbb.com/1/upload', {
-        method: 'POST',
-        body: formData
-      });
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        { method: 'POST', body: formData }
+      );
       
       if (!res.ok) {
-        throw new Error(`ImgBB API returned status ${res.status}`);
+        throw new Error(`Cloudinary API returned ${res.status}`);
       }
       
       const data = await res.json();
-      const imageUrl = data?.data?.url;
-      
-      if (!imageUrl) {
-        throw new Error('No image URL returned by ImgBB API');
+      const secureUrl = data.secure_url;
+      if (!secureUrl) {
+        throw new Error('No secure_url returned by Cloudinary API');
       }
 
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: imageUrl });
-      await updateProfile(user, { photoURL: imageUrl });
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: secureUrl });
+      await updateProfile(user, { photoURL: secureUrl });
       
       showToast('Photo updated', 'success');
     } catch (error: any) {
