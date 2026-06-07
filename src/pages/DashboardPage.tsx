@@ -34,6 +34,7 @@ export const DashboardPage = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [recentSolves, setRecentSolves] = useState<SolveLog[]>([]);
   const [solves30Days, setSolves30Days] = useState<SolveLog[]>([]);
+  const [guestSolves, setGuestSolves] = useState<SolveLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch all users to compute global metrics & resolve user mapping
@@ -68,6 +69,35 @@ export const DashboardPage = () => {
     return () => unsub();
   }, []);
 
+  // Load guest solves and listen for live guest solves logging
+  const loadGuestSolves = () => {
+    try {
+      const raw = localStorage.getItem('cptracker_guest_solves');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const mapped = parsed.map((s: any) => ({
+          ...s,
+          solvedAt: {
+            toMillis: () => s.solvedAt.seconds * 1000 + (s.solvedAt.nanoseconds / 1000000 || 0),
+            seconds: s.solvedAt.seconds,
+            nanoseconds: s.solvedAt.nanoseconds
+          }
+        }));
+        setGuestSolves(mapped);
+      } else {
+        setGuestSolves([]);
+      }
+    } catch (e) {
+      console.error('Error loading guest solves on Dashboard:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadGuestSolves();
+    window.addEventListener('cptracker_guest_solve_added', loadGuestSolves);
+    return () => window.removeEventListener('cptracker_guest_solve_added', loadGuestSolves);
+  }, []);
+
   // Map users list into O(1) lookup map
   const userMap = useMemo(() => {
     const map: Record<string, UserProfile> = {};
@@ -76,6 +106,20 @@ export const DashboardPage = () => {
     });
     return map;
   }, [users]);
+
+  // Combine recent solves for feed
+  const combinedRecent = useMemo(() => {
+    const combined = [...guestSolves, ...recentSolves];
+    combined.sort((a, b) => getMillis(b.solvedAt) - getMillis(a.solvedAt));
+    return combined.slice(0, 15);
+  }, [recentSolves, guestSolves]);
+
+  // Combine 30 day solves for splits
+  const combined30Days = useMemo(() => {
+    const limitMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const recentGuests = guestSolves.filter(s => getMillis(s.solvedAt) >= limitMs);
+    return [...solves30Days, ...recentGuests];
+  }, [solves30Days, guestSolves]);
 
   // Compute global platform aggregates
   const globalStats = useMemo(() => {
@@ -87,18 +131,26 @@ export const DashboardPage = () => {
       totalHours += u.totalHours || 0;
       totalXP += u.xp || 0;
     });
+
+    // Combine guest stats
+    guestSolves.forEach(s => {
+      totalSolves += 1;
+      totalHours += s.totalTime / 60;
+      totalXP += s.xpEarned || 0;
+    });
+
     return {
       totalUsers: users.length,
       totalSolves,
       totalHours: Math.round(totalHours * 10) / 10,
       totalXP,
     };
-  }, [users]);
+  }, [users, guestSolves]);
 
   // Compute platform splits (30 days)
   const splits = useMemo(() => {
     let cf = 0, ac = 0, lc = 0;
-    solves30Days.forEach(s => {
+    combined30Days.forEach(s => {
       if (s.platform === 'codeforces') cf++;
       else if (s.platform === 'atcoder') ac++;
       else if (s.platform === 'leetcode') lc++;
@@ -108,7 +160,7 @@ export const DashboardPage = () => {
     const acPct = total > 0 ? (ac / total) * 100 : 0;
     const lcPct = total > 0 ? (lc / total) * 100 : 0;
     return { cf, ac, lc, total, cfPct, acPct, lcPct };
-  }, [solves30Days]);
+  }, [combined30Days]);
 
   return (
     <div className="page-wrap" style={{ position: 'relative' }}>
@@ -195,13 +247,13 @@ export const DashboardPage = () => {
               <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite', margin: '0 auto 12px' }} />
               Loading global activity feed...
             </div>
-          ) : recentSolves.length === 0 ? (
+          ) : combinedRecent.length === 0 ? (
             <div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.9rem' }}>
               No solves have been logged on the platform yet. Be the first to start training!
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {recentSolves.map(solve => {
+              {combinedRecent.map(solve => {
                 const solver = userMap[solve.userId];
                 const displayName = solver?.username || solver?.displayName || 'A guest';
                 const avatar = solver?.photoURL;

@@ -408,20 +408,82 @@ export default function ProfilePage() {
     return () => clearTimeout(delay);
   }, [usernameInput, profile?.username, user]);
 
+  const compressImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_WIDTH = 400;
+          const MAX_HEIGHT = 400;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas 2D context is not available'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error('Canvas compression returned null blob'));
+              }
+            },
+            'image/jpeg',
+            0.7
+          );
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setAvatarUploading(true);
     try {
+      const compressedBlob = await compressImage(file);
       const avatarRef = ref(storage, `avatars/${user.uid}`);
-      await uploadBytes(avatarRef, file);
+      await uploadBytes(avatarRef, compressedBlob);
       const downloadURL = await getDownloadURL(avatarRef);
       await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
-      await updateProfile(user, { photoURL: downloadURL });
+      
+      // Stop the UI loading spinner immediately upon Firestore write succeeding
+      setAvatarUploading(false);
+      
+      // Update profile in the background without blocking the UI spinner
+      updateProfile(user, { photoURL: downloadURL }).catch((err) => {
+        console.error('Failed to update Auth profile in background:', err);
+      });
     } catch (err) {
       console.error('Avatar upload error:', err);
       alert('Failed to upload avatar.');
-    } finally {
       setAvatarUploading(false);
     }
   };

@@ -103,9 +103,9 @@ export default function SolveWizard({ onSuccess, onCancel: _onCancel }: Props) {
     setFormError(null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (bypassGuestCheck = false) => {
     setFormError(null);
-    if (!user) { setShowGuestAuth(true); return; }
+    if (!user && !bypassGuestCheck) { setShowGuestAuth(true); return; }
     if (!problemName.trim()) { setFormError('Problem name is required.'); return; }
 
     try {
@@ -196,7 +196,7 @@ export default function SolveWizard({ onSuccess, onCancel: _onCancel }: Props) {
         type="button"
         className="btn-primary"
         style={{ width: '100%' }}
-        onClick={handleSubmit}
+        onClick={() => handleSubmit()}
         disabled={submitting}
       >
         {submitting
@@ -335,7 +335,7 @@ export default function SolveWizard({ onSuccess, onCancel: _onCancel }: Props) {
 
       <button
         type="button" className="btn-primary" style={{ width: '100%' }}
-        onClick={handleSubmit} disabled={submitting}
+        onClick={() => handleSubmit()} disabled={submitting}
       >
         {submitting
           ? <><span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Saving…</>
@@ -462,12 +462,12 @@ export default function SolveWizard({ onSuccess, onCancel: _onCancel }: Props) {
               <button
                 onClick={() => {
                   setShowGuestAuth(false);
-                  onSuccess?.(); // Close the modal / sheet
+                  handleSubmit(true);
                 }}
                 className="cp-btn-secondary"
                 style={{ width: '100%', padding: '10px', fontSize: '13px' }}
               >
-                Maybe later
+                Save Locally as Guest
               </button>
             </div>
           </div>

@@ -14,12 +14,72 @@ export function useSolveSubmit() {
   const submitSolve = async (
     solveData: Omit<SolveLog, 'solveId' | 'userId' | 'teamId' | 'xpEarned' | 'solvedAt'>
   ) => {
-    if (!user) throw new Error('You must be signed in to log a solve.');
-
     setSubmitting(true);
     setError(null);
 
     try {
+      if (!user) {
+        let xpEarned = 0;
+        if (solveData.accepted) {
+          const xpCalc = calculateXP({
+            difficulty: solveData.difficulty,
+            totalTime: solveData.totalTime,
+            accepted: true,
+            wa: solveData.wa,
+            tle: solveData.tle,
+            sourceType: solveData.sourceType,
+          });
+          xpEarned = xpCalc.xp;
+        }
+
+        const guestSolve: SolveLog = {
+          solveId: `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId: 'guest',
+          teamId: '',
+          platform:     solveData.platform ?? null,
+          problemName:  solveData.problemName,
+          problemLink:  solveData.problemLink ?? null,
+          difficulty:   solveData.difficulty ?? null,
+          totalTime:    solveData.totalTime,
+          accepted:     solveData.accepted ?? null,
+          notes:        solveData.notes ?? null,
+          sourceType:   solveData.sourceType ?? null,
+          wa:           solveData.wa ?? null,
+          tle:          solveData.tle ?? null,
+          re:           solveData.re ?? null,
+          ce:           solveData.ce ?? null,
+          wrongAnswers: solveData.wrongAnswers ?? solveData.wa ?? null,
+          xpEarned,
+          solvedAt:     Timestamp.now(),
+        };
+
+        let existing: any[] = [];
+        try {
+          const raw = localStorage.getItem('cptracker_guest_solves');
+          if (raw) existing = JSON.parse(raw);
+        } catch (e) {
+          console.error('Error reading guest solves', e);
+        }
+
+        const serializedSolve = {
+          ...guestSolve,
+          solvedAt: { seconds: guestSolve.solvedAt.seconds, nanoseconds: guestSolve.solvedAt.nanoseconds }
+        };
+
+        existing.push(serializedSolve);
+        localStorage.setItem('cptracker_guest_solves', JSON.stringify(existing));
+
+        window.dispatchEvent(new CustomEvent('cptracker_guest_solve_added'));
+
+        return {
+          success:   true,
+          xpEarned,
+          accepted:  solveData.accepted,
+          rankUp:    false,
+          newBadges: [],
+        };
+      }
+
       const solveRef = doc(collection(db, 'solves'));
       const userRef  = doc(db, 'users', user.uid);
 

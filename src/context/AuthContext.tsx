@@ -1,8 +1,9 @@
 import React, { createContext, useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, onSnapshot, runTransaction } from 'firebase/firestore';
+import { doc, onSnapshot, runTransaction, writeBatch, collection, getDoc, updateDoc, increment, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { getRank } from '../lib/xp';
 import { loginWithGoogle, logout, createUserProfile } from '../lib/auth';
 import type { UserProfile } from '../types';
 
@@ -25,6 +26,69 @@ interface AuthContextType {
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+async function migrateGuestSolves(uid: string) {
+  const raw = localStorage.getItem('cptracker_guest_solves');
+  if (!raw) return;
+  localStorage.removeItem('cptracker_guest_solves');
+
+  try {
+    const guestSolves = JSON.parse(raw);
+    if (!Array.isArray(guestSolves) || guestSolves.length === 0) return;
+
+    console.log(`Migrating ${guestSolves.length} guest solves to user ${uid}...`);
+
+    const batch = writeBatch(db);
+    let totalXPEarned = 0;
+    let totalSolvesEarned = 0;
+    let totalHoursEarned = 0;
+
+    guestSolves.forEach((s: any) => {
+      const solveRef = doc(collection(db, 'solves'));
+      
+      let solvedAtTimestamp = Timestamp.now();
+      if (s.solvedAt && typeof s.solvedAt.seconds === 'number') {
+        solvedAtTimestamp = new Timestamp(s.solvedAt.seconds, s.solvedAt.nanoseconds || 0);
+      }
+
+      const solveDoc = {
+        ...s,
+        solveId: solveRef.id,
+        userId: uid,
+        solvedAt: solvedAtTimestamp,
+      };
+
+      batch.set(solveRef, solveDoc);
+
+      if (s.accepted) {
+        totalXPEarned += s.xpEarned || 0;
+        totalSolvesEarned += 1;
+      }
+      totalHoursEarned += (s.totalTime || 0) / 60;
+    });
+
+    const userRef = doc(db, 'users', uid);
+    batch.update(userRef, {
+      xp: increment(totalXPEarned),
+      totalSolves: increment(totalSolvesEarned),
+      totalHours: increment(totalHoursEarned),
+    });
+
+    await batch.commit();
+    console.log('Guest solves migration commit successful!');
+
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      const freshProfile = userSnap.data();
+      const newRank = getRank(freshProfile.xp || 0);
+      await updateDoc(userRef, {
+        rank: newRank,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to migrate guest solves:', e);
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser]                       = useState<FirebaseUser | null>(null);
@@ -58,6 +122,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfile(profileData);
               setNeedsOnboarding(false);
               setNeedsUsername(!profileData.username);
+
+              const raw = localStorage.getItem('cptracker_guest_solves');
+              if (raw) {
+                setTimeout(() => {
+                  migrateGuestSolves(currentUser.uid);
+                }, 100);
+              }
             } else {
               setProfile(null);
               setNeedsOnboarding(true);

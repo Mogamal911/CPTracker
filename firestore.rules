@@ -25,9 +25,36 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
-    // Friendships — owner can read/write any subcollection document
-    match /friendships/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Friendships — owner can read/write; friend can delete (for mutual unfriend)
+    match /friendships/{userId}/friends/{friendId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == friendId);
+    }
+
+    // Follows — owner can write/delete following; followers can write/delete followers
+    match /follows/{userId}/following/{targetId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == targetId);
+    }
+    match /follows/{userId}/followers/{followerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.auth.uid == userId || request.auth.uid == followerId);
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == followerId);
+    }
+
+    // Friend Requests
+    match /friendRequests/{requestId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.fromUid;
+      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid);
+    }
+
+    // Notifications
+    match /notifications/{userId}/items/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null;
     }
 
     // Teams — read for everyone (including guests); create for authenticated users;

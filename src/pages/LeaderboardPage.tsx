@@ -138,6 +138,48 @@ export const LeaderboardPage = () => {
   // Yesterday snapshot for rank change indicators
   const [yesterdaySnapshot, setYesterdaySnapshot] = useState<Record<string, number> | null>(null);
 
+  const [guestSolves, setGuestSolves] = useState<SolveLog[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('cptracker_guest_solves');
+      if (raw) {
+        setGuestSolves(JSON.parse(raw));
+      }
+    } catch (e) {
+      console.error('Error loading guest solves on Leaderboard:', e);
+    }
+  }, []);
+
+  const guestProfile = useMemo(() => {
+    if (user) return null;
+    let totalXP = 0;
+    let solvesCount = 0;
+    let hoursCount = 0;
+    guestSolves.forEach(s => {
+      totalXP += s.xpEarned || 0;
+      if (s.accepted) solvesCount++;
+      hoursCount += s.totalTime / 60;
+    });
+
+    const prof: UserProfile = {
+      uid: 'guest',
+      displayName: 'Guest (You)',
+      username: 'guest_you',
+      photoURL: '',
+      xp: totalXP,
+      totalSolves: solvesCount,
+      totalHours: hoursCount,
+      rank: 'Newbie',
+      teams: [],
+      streak: 0,
+      weeklyProblems: 0,
+      weeklyHours: 0,
+      badges: [],
+    };
+    return prof;
+  }, [user, guestSolves]);
+
   useEffect(() => {
     if (mode === 'group' && !selectedGroupId && groups.length > 0) {
       setSelectedGroupId(groups[0].teamId);
@@ -196,6 +238,11 @@ export const LeaderboardPage = () => {
     } else if (mode === 'friends') {
       filteredUsers = allUsers.filter(u => u.uid === user?.uid || friendUids.includes(u.uid));
     }
+    
+    if (guestProfile && mode === 'global') {
+      filteredUsers = [...filteredUsers, guestProfile];
+    }
+    
     if (filteredUsers.length === 0) return [];
 
     if (period === 'all') {
@@ -205,6 +252,28 @@ export const LeaderboardPage = () => {
     }
 
     const statsMap: Record<string, { xp: number; solves: number; hours: number }> = {};
+    
+    // Add guest solves stats
+    if (guestProfile) {
+      const cutoff = getCutoff(period);
+      const cutoffMs = cutoff ? cutoff.getTime() : 0;
+      
+      guestSolves.forEach(s => {
+        let ms = 0;
+        if (s.solvedAt && (s.solvedAt as any).seconds) {
+          ms = (s.solvedAt as any).seconds * 1000;
+        } else {
+          ms = new Date(s.solvedAt as any).getTime();
+        }
+        if (ms >= cutoffMs) {
+          if (!statsMap['guest']) statsMap['guest'] = { xp: 0, solves: 0, hours: 0 };
+          statsMap['guest'].xp += s.xpEarned ?? 0;
+          if (s.accepted) statsMap['guest'].solves += 1;
+          statsMap['guest'].hours += (s.totalTime ?? 0) / 60;
+        }
+      });
+    }
+
     periodSolves.forEach(s => {
       if (!statsMap[s.userId]) statsMap[s.userId] = { xp: 0, solves: 0, hours: 0 };
       statsMap[s.userId].xp += s.xpEarned ?? 0;
@@ -221,7 +290,7 @@ export const LeaderboardPage = () => {
         periodHours:  Math.round((statsMap[p.uid]?.hours ?? 0) * 10) / 10,
       }))
       .sort((a, b) => b.periodXP - a.periodXP);
-  }, [allUsers, periodSolves, mode, selectedGroupId, period, friendUids, user?.uid, groups]);
+  }, [allUsers, periodSolves, mode, selectedGroupId, period, friendUids, user?.uid, groups, guestProfile, guestSolves]);
 
   // Save today's snapshot whenever rows change
   useEffect(() => {
@@ -229,7 +298,7 @@ export const LeaderboardPage = () => {
   }, [rows, period, mode]);
 
   const loading = loadingUsers || loadingSolves;
-  const currentUserIdx = rows.findIndex(r => r.profile.uid === user?.uid);
+  const currentUserIdx = rows.findIndex(r => r.profile.uid === (user?.uid || 'guest'));
   const GUEST_VISIBLE = 3;
 
   // rows.length >= 3 shows the podium above the table
